@@ -12,7 +12,6 @@ pub use remote_server::*;
 pub mod auth_context;
 #[cfg(not(target_family = "wasm"))]
 mod codebase_index_status;
-#[cfg(not(target_family = "wasm"))]
 pub mod diff_state_proto;
 #[cfg(not(target_family = "wasm"))]
 pub mod diff_state_tracker;
