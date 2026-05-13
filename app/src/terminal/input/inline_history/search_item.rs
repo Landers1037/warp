@@ -1,4 +1,5 @@
-use crate::ai::agent::conversation::{AIConversationId, ConversationStatus};
+use crate::ai::agent::conversation::ConversationStatus;
+use crate::ai::agent_conversations_model::AgentConversationEntryId;
 use crate::ai::conversation_status_ui::{render_status_element, STATUS_ELEMENT_PADDING};
 use crate::appearance::Appearance;
 use crate::search::{ItemHighlightState, SearchItem};
@@ -31,7 +32,7 @@ pub struct InlineHistoryItem {
 #[derive(Debug, Clone)]
 enum HistoryItemType {
     Conversation {
-        conversation_id: AIConversationId,
+        item_id: AgentConversationEntryId,
         title: String,
         status: ConversationStatus,
     },
@@ -46,14 +47,14 @@ enum HistoryItemType {
 
 impl InlineHistoryItem {
     pub fn conversation(
-        conversation_id: AIConversationId,
+        item_id: AgentConversationEntryId,
         title: String,
         status: ConversationStatus,
         timestamp: DateTime<Local>,
     ) -> Self {
         Self {
             item_type: HistoryItemType::Conversation {
-                conversation_id,
+                item_id,
                 title,
                 status,
             },
@@ -250,14 +251,12 @@ impl SearchItem for InlineHistoryItem {
 
     fn accept_result(&self) -> Self::Action {
         match &self.item_type {
-            HistoryItemType::Conversation {
-                conversation_id,
-                title,
-                ..
-            } => AcceptHistoryItem::Conversation {
-                conversation_id: *conversation_id,
-                title: title.clone(),
-            },
+            HistoryItemType::Conversation { item_id, title, .. } => {
+                AcceptHistoryItem::Conversation {
+                    item_id: *item_id,
+                    title: title.clone(),
+                }
+            }
             HistoryItemType::Command {
                 command,
                 linked_workflow_data,

@@ -1,5 +1,8 @@
 use chrono::{Local, TimeZone as _};
 
+use crate::ai::agent::conversation::ConversationStatus;
+use crate::ai::agent_conversations_model::AgentConversationEntryId;
+use crate::ai::ambient_agents::AmbientAgentTaskId;
 use crate::input_suggestions::HistoryOrder;
 
 use super::{interleave_conversations, MenuEntry, MenuItem};
@@ -94,4 +97,29 @@ fn interleave_conversations_only_inserts_into_current_session_segment() {
         commands,
         vec!["d10", "d20", "conv50", "c100", "conv150", "c200"]
     );
+}
+
+#[test]
+fn interleave_conversations_preserves_task_backed_ids() {
+    let timestamp = Local.with_ymd_and_hms(2024, 1, 1, 0, 0, 10).unwrap();
+    let task_id: AmbientAgentTaskId = "00000000-0000-4000-8000-000000000001".parse().unwrap();
+
+    let conversations = vec![MenuEntry {
+        order: HistoryOrder::CurrentSession,
+        sort_timestamp: timestamp,
+        item: MenuItem::Conversation {
+            item_id: AgentConversationEntryId::AmbientRun(task_id),
+            title: "task row".to_string(),
+            status: ConversationStatus::Success,
+            match_result: None,
+            display_timestamp: timestamp,
+        },
+    }];
+
+    let merged = interleave_conversations(Vec::new(), conversations);
+
+    let MenuItem::Conversation { item_id, .. } = merged[0].item else {
+        panic!("expected conversation row");
+    };
+    assert_eq!(item_id, AgentConversationEntryId::AmbientRun(task_id));
 }

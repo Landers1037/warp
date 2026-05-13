@@ -6,9 +6,12 @@
 //! - Commands are deduplicated, keeping the most recent occurrence
 //! - The result is that current session items appear at the bottom (closer to input)
 
-use crate::ai::agent::conversation::{AIConversationId, ConversationStatus};
+use crate::ai::agent::conversation::ConversationStatus;
+use crate::ai::agent_conversations_model::{
+    AgentConversationEntryId, AgentConversationNavigationSubject, AgentConversationsModel,
+    AgentManagementFilters,
+};
 use crate::ai::blocklist::agent_view::AgentViewController;
-use crate::ai::blocklist::BlocklistAIHistoryModel;
 use crate::input_suggestions::{HistoryInputSuggestion, HistoryOrder};
 use crate::search::data_source::{Query, QueryFilter, QueryResult};
 use crate::search::mixer::DataSourceRunErrorWrapper;
@@ -21,6 +24,7 @@ use crate::terminal::input::inline_menu::{
 };
 use crate::terminal::model::session::active_session::ActiveSession;
 use crate::terminal::model::session::SessionId;
+use crate::workspace::RestoreConversationLayout;
 use chrono::{DateTime, Local};
 use fuzzy_match::FuzzyMatchResult;
 use ordered_float::OrderedFloat;
@@ -29,7 +33,7 @@ use warpui::{AppContext, Entity, EntityId, ModelHandle, SingletonEntity};
 #[derive(Clone, Debug)]
 pub enum AcceptHistoryItem {
     Conversation {
-        conversation_id: AIConversationId,
+        item_id: AgentConversationEntryId,
         title: String,
     },
     Command {
@@ -153,20 +157,20 @@ impl InlineHistoryMenuDataSource {
 
     fn build_conversation_entries(&self, trimmed_query: &str, app: &AppContext) -> Vec<MenuEntry> {
         let mut conversation_entries: Vec<MenuEntry> = Vec::new();
-        let history_model = BlocklistAIHistoryModel::handle(app).as_ref(app);
-        for conversation in
-            history_model.all_live_conversations_for_terminal_view(self.terminal_view_id)
+        for entry in AgentConversationsModel::as_ref(app)
+            .get_entries(&AgentManagementFilters::default(), app)
+            .into_iter()
+            .filter(|entry| {
+                AgentConversationsModel::resolve_open_action(
+                    AgentConversationNavigationSubject::Entry(entry.id),
+                    Some(RestoreConversationLayout::ActivePane),
+                    app,
+                )
+                .is_some()
+            })
         {
-            if conversation.is_entirely_passive() || conversation.exchange_count() == 0 {
-                continue;
-            }
-
-            let Some(timestamp) = conversation.last_modified_at() else {
-                continue;
-            };
-            let title = conversation
-                .title()
-                .unwrap_or_else(|| "Untitled conversation".to_string());
+            let timestamp = entry.display.last_updated.with_timezone(&Local);
+            let title = entry.display.title.clone();
             let match_result = if trimmed_query.is_empty() {
                 None
             } else {
@@ -181,9 +185,9 @@ impl InlineHistoryMenuDataSource {
                 order: HistoryOrder::CurrentSession,
                 sort_timestamp: timestamp,
                 item: MenuItem::Conversation {
-                    conversation_id: conversation.id(),
+                    item_id: entry.id,
                     title,
-                    status: conversation.status().clone(),
+                    status: entry.display.status.to_conversation_status(),
                     match_result,
                     display_timestamp: timestamp,
                 },
@@ -209,7 +213,7 @@ struct MenuEntry {
 #[derive(Clone)]
 enum MenuItem {
     Conversation {
-        conversation_id: AIConversationId,
+        item_id: AgentConversationEntryId,
         title: String,
         status: ConversationStatus,
         match_result: Option<FuzzyMatchResult>,
@@ -332,18 +336,13 @@ impl SyncDataSource for InlineHistoryMenuDataSource {
             let score = OrderedFloat(results.len() as f64);
             let search_item = match entry.item {
                 MenuItem::Conversation {
-                    conversation_id,
+                    item_id,
                     title,
                     status,
                     match_result,
                     display_timestamp,
-                } => InlineHistoryItem::conversation(
-                    conversation_id,
-                    title,
-                    status,
-                    display_timestamp,
-                )
-                .with_name_match_result(match_result),
+                } => InlineHistoryItem::conversation(item_id, title, status, display_timestamp)
+                    .with_name_match_result(match_result),
                 MenuItem::Command {
                     command,
                     linked_workflow_data,

@@ -8,7 +8,7 @@ use warp_core::ui::theme::Fill;
 use warpui::elements::ChildView;
 use warpui::{AppContext, Element, Entity, EntityId, ModelHandle, View, ViewContext, ViewHandle};
 
-use crate::ai::agent::conversation::AIConversationId;
+use crate::ai::agent_conversations_model::AgentConversationEntryId;
 use crate::ai::blocklist::agent_view::{AgentViewController, AgentViewControllerEvent};
 use crate::features::FeatureFlag;
 use crate::search::data_source::{Query, QueryFilter};
@@ -34,7 +34,7 @@ use crate::workspace::WorkspaceAction;
 #[derive(Debug, Clone)]
 pub enum InlineHistoryMenuEvent {
     NavigateToConversation {
-        conversation_id: AIConversationId,
+        item_id: AgentConversationEntryId,
     },
     AcceptCommand {
         command: String,
@@ -63,7 +63,7 @@ pub enum InlineHistoryMenuEvent {
 /// Identifies a history item well enough to reselect the same logical item
 /// after rerunning the current query.
 enum HistoryItemIdentity {
-    Conversation(AIConversationId),
+    Conversation(AgentConversationEntryId),
     Command(String),
     AIPrompt(String),
 }
@@ -71,9 +71,7 @@ enum HistoryItemIdentity {
 impl HistoryItemIdentity {
     fn from_item(item: &AcceptHistoryItem) -> Self {
         match item {
-            AcceptHistoryItem::Conversation {
-                conversation_id, ..
-            } => Self::Conversation(*conversation_id),
+            AcceptHistoryItem::Conversation { item_id, .. } => Self::Conversation(*item_id),
             AcceptHistoryItem::Command { command, .. } => Self::Command(command.clone()),
             AcceptHistoryItem::AIPrompt { query_text } => Self::AIPrompt(query_text.clone()),
         }
@@ -81,12 +79,9 @@ impl HistoryItemIdentity {
 
     fn matches(&self, item: &AcceptHistoryItem) -> bool {
         match (self, item) {
-            (
-                Self::Conversation(expected_id),
-                AcceptHistoryItem::Conversation {
-                    conversation_id, ..
-                },
-            ) => *expected_id == *conversation_id,
+            (Self::Conversation(expected_id), AcceptHistoryItem::Conversation { item_id, .. }) => {
+                *expected_id == *item_id
+            }
             (Self::Command(expected_command), AcceptHistoryItem::Command { command, .. }) => {
                 expected_command == command
             }
@@ -363,12 +358,8 @@ impl InlineHistoryMenuView {
 
         ctx.subscribe_to_view(&menu_view, |me, _, event, ctx| match event {
             InlineMenuEvent::AcceptedItem { item, .. } => match item {
-                AcceptHistoryItem::Conversation {
-                    conversation_id, ..
-                } => {
-                    ctx.emit(InlineHistoryMenuEvent::NavigateToConversation {
-                        conversation_id: *conversation_id,
-                    });
+                AcceptHistoryItem::Conversation { item_id, .. } => {
+                    ctx.emit(InlineHistoryMenuEvent::NavigateToConversation { item_id: *item_id });
                 }
                 AcceptHistoryItem::Command {
                     command,
