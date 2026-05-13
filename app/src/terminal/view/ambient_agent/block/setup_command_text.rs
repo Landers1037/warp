@@ -75,6 +75,9 @@ impl SetupCommandState {
     pub fn is_running(&self, group_id: SetupCommandGroupId) -> bool {
         self.running_group_id == Some(group_id)
     }
+    pub fn is_current_group_running(&self) -> bool {
+        self.is_running(self.current_group_id)
+    }
 
     pub fn start_new_group(&mut self) -> SetupCommandGroupId {
         let group_id = SetupCommandGroupId(self.next_group_id);

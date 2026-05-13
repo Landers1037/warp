@@ -7133,6 +7133,29 @@ impl TerminalView {
     pub fn is_shared_session_viewer(&self) -> bool {
         self.model.lock().is_shared_session_viewer()
     }
+    pub(crate) fn should_suppress_ambient_setup_input_sync(&self, app: &AppContext) -> bool {
+        FeatureFlag::CloudModeSetupV2.is_enabled()
+            && self.ambient_agent_view_model.as_ref().is_some_and(|model| {
+                let model = model.as_ref(app);
+                let setup_state = model.setup_command_state();
+                setup_state.did_execute_a_setup_command() && setup_state.is_current_group_running()
+            })
+    }
+
+    pub(crate) fn apply_viewer_shared_session_input_update(
+        &mut self,
+        block_id: &BlockId,
+        operations: Vec<CrdtOperation>,
+        ctx: &mut ViewContext<Self>,
+    ) {
+        if self.should_suppress_ambient_setup_input_sync(ctx) {
+            return;
+        }
+
+        self.input().update(ctx, |input, ctx| {
+            input.process_remote_edits(block_id, operations, ctx);
+        });
+    }
 
     pub fn ssh_file_upload(&self) -> &ViewHandle<FileUpload> {
         &self.ssh_file_upload
