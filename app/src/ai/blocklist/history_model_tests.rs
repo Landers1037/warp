@@ -698,6 +698,97 @@ fn test_initialize_historical_conversations_indexes_child_conversations() {
 }
 
 #[test]
+fn test_initialize_historical_conversations_ignores_forked_child_metadata() {
+    use crate::persistence::model::{AgentConversation, AgentConversationRecord};
+    use chrono::NaiveDateTime;
+
+    App::test((), |app| async move {
+        let parent_id = AIConversationId::new();
+        let forked_child_id = AIConversationId::new();
+
+        let forked_child_data = format!(
+            r#"{{
+                "parent_conversation_id":"{parent_id}",
+                "forked_from_server_conversation_token":"source-child-token"
+            }}"#
+        );
+
+        let conversations = vec![AgentConversation {
+            conversation: AgentConversationRecord {
+                id: 1,
+                conversation_id: forked_child_id.to_string(),
+                conversation_data: forked_child_data,
+                last_modified_at: NaiveDateTime::default(),
+            },
+            tasks: vec![],
+        }];
+
+        let history_model =
+            app.add_singleton_model(|_| BlocklistAIHistoryModel::new(vec![], &conversations));
+
+        history_model.read(&app, |model, _| {
+            assert!(
+                model.child_conversation_ids_of(&parent_id).is_empty(),
+                "forked handoff conversations should not be indexed as orchestration children"
+            );
+        });
+    });
+}
+
+#[test]
+fn test_restore_conversations_ignores_forked_child_metadata() {
+    use crate::ai::agent::conversation::AIConversation;
+    use crate::persistence::model::AgentConversationData;
+
+    App::test((), |mut app| async move {
+        let terminal_view_id = EntityId::new();
+        let history_model = app.add_singleton_model(|_| BlocklistAIHistoryModel::new(vec![], &[]));
+
+        let parent_id = AIConversationId::new();
+        let forked_child_id = AIConversationId::new();
+        let conversation_data = AgentConversationData {
+            server_conversation_token: Some("forked-child-token".to_string()),
+            conversation_usage_metadata: None,
+            reverted_action_ids: None,
+            forked_from_server_conversation_token: Some("source-child-token".to_string()),
+            artifacts_json: None,
+            parent_agent_id: None,
+            agent_name: None,
+            orchestration_harness_type: None,
+            parent_conversation_id: Some(parent_id.to_string()),
+            is_remote_child: false,
+            run_id: None,
+            autoexecute_override: None,
+            last_event_sequence: None,
+        };
+        let forked_child = AIConversation::new_restored(
+            forked_child_id,
+            vec![warp_multi_agent_api::Task {
+                id: "root-task".to_string(),
+                messages: vec![],
+                dependencies: None,
+                description: String::new(),
+                summary: String::new(),
+                server_data: String::new(),
+            }],
+            Some(conversation_data),
+        )
+        .expect("forked child conversation should restore");
+
+        history_model.update(&mut app, |model, ctx| {
+            model.restore_conversations(terminal_view_id, vec![forked_child], ctx);
+        });
+
+        history_model.read(&app, |model, _| {
+            assert!(
+                model.child_conversation_ids_of(&parent_id).is_empty(),
+                "forked handoff conversations should not be indexed as orchestration children"
+            );
+        });
+    });
+}
+
+#[test]
 fn test_set_parent_for_conversation_populates_index() {
     App::test((), |mut app| async move {
         let terminal_view_id = EntityId::new();

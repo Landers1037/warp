@@ -255,6 +255,18 @@ pub struct BlocklistAIHistoryModel {
 }
 
 impl BlocklistAIHistoryModel {
+    fn should_index_child_conversation_data(data: &AgentConversationData) -> bool {
+        data.parent_conversation_id.is_some()
+            && data.forked_from_server_conversation_token.is_none()
+    }
+
+    fn should_index_child_conversation(conversation: &AIConversation) -> bool {
+        conversation.parent_conversation_id().is_some()
+            && conversation
+                .forked_from_server_conversation_token()
+                .is_none()
+    }
+
     pub(crate) fn new(
         persisted_queries: Vec<PersistedAIInput>,
         multi_agent_conversations: &[AgentConversation],
@@ -682,7 +694,10 @@ impl BlocklistAIHistoryModel {
             }
 
             // Maintain the parent→child index for child agent conversations.
-            if let Some(parent_id) = conversation.parent_conversation_id() {
+            if Self::should_index_child_conversation(&conversation) {
+                let Some(parent_id) = conversation.parent_conversation_id() else {
+                    continue;
+                };
                 let children = self.children_by_parent.entry(parent_id).or_default();
                 if !children.contains(&conversation_id) {
                     children.push(conversation_id);

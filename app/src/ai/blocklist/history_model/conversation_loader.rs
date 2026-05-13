@@ -469,10 +469,11 @@ impl BlocklistAIHistoryModel {
                     &agent_conv.conversation.conversation_data,
                 )
                 .ok();
-                if let Some(parent_id_str) = conversation_data
-                    .as_ref()
-                    .and_then(|data| data.parent_conversation_id.as_deref())
-                {
+                if let Some(parent_id_str) = conversation_data.as_ref().and_then(|data| {
+                    BlocklistAIHistoryModel::should_index_child_conversation_data(data)
+                        .then_some(data.parent_conversation_id.as_deref())
+                        .flatten()
+                }) {
                     if let Ok(parent_id) = AIConversationId::try_from(parent_id_str.to_string()) {
                         self.children_by_parent
                             .entry(parent_id)
